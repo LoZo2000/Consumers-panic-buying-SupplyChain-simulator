@@ -6,6 +6,8 @@ import random
 import math as m
 import matplotlib.pyplot as plt
 
+
+
 """System parameters"""
 DC_starting_inventory = 10000
 m_starting_capacity = 10000           
@@ -32,6 +34,31 @@ consumption_list_region[range(int(0.27*N/N_regions),int(0.88*N/N_regions))] = [0
 consumption_list_region[range(int(0.88*N/N_regions),int(0.98*N/N_regions))] = [0.067, 6]
 consumption_list_region[range(int(0.98*N/N_regions),int(N/N_regions))] = [0.033, 11]
 consumption_list_region = consumption_list_region.tolist() #convert a given array to an ordinary list with the same items, elements, or values
+
+
+
+# Initialize live graph:
+plt.ion()
+class ResponsiveGraph():
+    def __init__(self):
+        self.fig = plt.figure()
+        self.agents_in_cell = np.zeros((w_grid, h_grid))
+        self.fig.set_figwidth(8) 
+        self.fig.set_figheight(8)
+        plt.axis('on')
+        plt.title("Map")
+        plt.imshow(self.agents_in_cell, interpolation='nearest')
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
+                
+    def update(self):
+        plt.axis('on')
+        plt.title("Map")
+        plt.imshow(self.agents_in_cell, interpolation='nearest')
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
+
+
 
 """Agent classes definition"""
 class Customer(Agent):
@@ -235,7 +262,7 @@ class ABSModel(Model):
         self.initial_panic_customers = []           # List of Customers in panic in the step (day)
         self.orders_at_dc = 0                       # Records the demand received by the DC in the step (day)
         self.customer_list_region=[]                # List of customer agents per region
-        print("Starting agent creation...")
+        print("Starting agents creation...")
         
         """Agents' and grid initialization"""
         customer_list = [*range(N)]
@@ -244,6 +271,9 @@ class ABSModel(Model):
         h_count = [*range(int(h_grid/wh_region))] 
         available_grid_list = [*range(w_grid*h_grid)]
         available_grid_list_stores = []
+
+        # Create map:
+        self.responsiveGraph = ResponsiveGraph()
     
         """Customer creation and placement on the grid"""    
         for h in h_count:    
@@ -347,15 +377,29 @@ class ABSModel(Model):
             """Until panic end, at each step(day) a percentage of Customer agents is in panic""" 
             if i<panic_end: 
                 self.creating_panic_customers()
-                print("day", i, "panic behavior")
+                print("Day", i, ": panic behavior")
             else: 
-                print("day", i, "regular behavior")
+                print("Day", i, ": back to regular behavior")
         else:
             self.pandemic_count = 0
-            print("day", i, "regular behavior")
+            print("Day", i, ": regular behavior")
+
+        for x in range(w_grid):
+            for y in range(h_grid):
+                cellmates = self.grid.get_cell_list_contents((x,y))
+                if len(cellmates) > 0:
+                    cus = self.random.choice(cellmates)
+                    if isinstance(cus, Customer):
+                        if cus.pbs:
+                            self.responsiveGraph.agents_in_cell[x][y] = 2
+                        else:
+                            self.responsiveGraph.agents_in_cell[x][y] = 1
+        self.responsiveGraph.update()
             
         """Advances the simulation time of 1 step (day)"""
         self.schedule.step()
+
+
        
 """Initializing model parameters"""
 n_runs = 1                              # number of runs
@@ -373,10 +417,11 @@ lost_dc_inv = np.zeros([t_run,n_runs,N_dc])
 
 """Running the simulation"""
 for r in range(n_runs):
-    print("run number " + str(r))
+    print("\n\nRun number:" + str(r))
     model_1 = ABSModel()
     pandemic = False
     model_1.pandemic_count = 0
+    
     """Run for t_run steps"""
     for i in range(t_run):
         # Pandemic check
@@ -395,6 +440,8 @@ for r in range(n_runs):
         for a in model_1.schedule.agents:
             if hasattr(a,"dc_inv"):
                 lost_dc_inv[i][r][a.unique_id-N-N_s] = a.lost_restock
+
+
 
 """"Averages over runs"""
 av_demand = demand.mean(1)
@@ -416,18 +463,15 @@ for i in range(t_run):
 plt.show()
 plt.plot(ifr_dc)
 plt.ylim(0.2,)
-plt.title('DC item fill rate, run average')
+plt.title('DC Item Fill Rate, run average')
 plt.xlabel("time (days)")
-plt.ylabel("Item fill rate (-)")
+plt.ylabel("Item Fill Rate (-)")
 
 # 4. Plot the demand over time 
 plt.show()
 plt.plot(av_demand)
-plt.title("Demand over time")
+plt.title("demand over time")
 plt.xlabel("time (days)")
-plt.ylabel("Units")
+plt.ylabel("units")
 
-print("minimal dc ifr = ", str(np.min(ifr_dc)))
-
-
-
+print("Minimal Distribution Center IFR = ", round(np.min(ifr_dc)*100, 2), "%\n\n")
