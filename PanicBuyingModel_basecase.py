@@ -12,8 +12,8 @@ import matplotlib.pyplot as plt
 DC_starting_inventory = 10000
 m_starting_capacity = 10000           
 wh_region = 100                         # Width & Height of a region
-w_grid = wh_region*3 #5                 # Full width of the grid
-h_grid = wh_region*2 #4                 # Full height of the grid
+w_grid = wh_region*2 #5                 # Full width of the grid
+h_grid = wh_region*3 #4                 # Full height of the grid
 N_regions = int(w_grid/wh_region)*int(h_grid/wh_region) # Number of regions
 f_restock = 1/3                         # Restock frequency [/day]
 m_transport_time = 2                    # Manufacturer-to-DC transport time [days]
@@ -40,24 +40,49 @@ consumption_list_region = consumption_list_region.tolist() #convert a given arra
 # Initialize live graph:
 plt.ion()
 class ResponsiveGraph():
-    def __init__(self):
-        self.fig = plt.figure()
-        self.agents_in_cell = np.zeros((h_grid, w_grid))
-        self.fig.set_figwidth(15) 
+    def __init__(self, t):
+        self.fig, (self.ax1, self.ax2, self.ax3) = plt.subplots(1, 3)
+        self.fig.set_figwidth(20) 
         self.fig.set_figheight(9)
-        plt.axis('on')
-        plt.title("Map")
-        plt.imshow(self.agents_in_cell, interpolation='nearest', cmap = 'Reds_r')
-        self.fig.canvas.draw()
-        self.fig.canvas.flush_events()
-                
-    def update(self):
-        plt.axis('on')
-        plt.title("Map")
-        plt.imshow(self.agents_in_cell, interpolation='nearest', cmap = 'Reds_r')
+
+        # Map chart
+        self.ax1.set_title("Map")
+        self.agents_in_cell = np.zeros((h_grid, w_grid))
+        self.ax1.imshow(self.agents_in_cell, interpolation='nearest', cmap = 'Reds_r')
+
+        # Demand chart
+        self.ax2.set_title("Demand")
+        self.t = range(t)
+        self.demand = np.zeros(t)
+        self.av_demand = np.zeros(t)
+        
+        # IFR chart
+        self.ax3.set_title("Item Fill Rate")
+        self.ifr_dc = np.zeros(t)
+        self.av_ifr_dc = np.zeros(t)
+
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
 
+    def update(self, r, d, ifr):
+        plt.cla()
+        
+        # Map chart
+        self.ax1.imshow(self.agents_in_cell, interpolation='nearest', cmap = 'Reds_r')
+        
+        # Demand chart
+        self.demand[r] = d
+        self.av_demand[r] = demand[:r].mean()
+        self.ax2.plot(self.t[:r], self.demand[:r], 'k', marker='o')
+        self.ax2.plot(self.t[:r], self.av_demand[:r], 'k--')
+        
+        # IFR chart
+        self.ifr_dc[r] = ifr
+        self.ax3.plot(self.t[:r], self.ifr_dc[:r], 'b', marker='o')
+        
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
+    
 
 
 """Agent classes definition"""
@@ -257,7 +282,7 @@ class Manufacturer(Agent):
 
 """Model class definition"""        
 class ABSModel(Model):
-    def __init__(self):
+    def __init__(self, t_run):
         self.schedule = BaseScheduler(self)         # Activates all agents once per step, in order of addition to schedule
         self.d = 0                                  # Demand of current step (day)
         self.pandemic_count = 0                     # Counts the amount of steps (days) from the pandemic start
@@ -276,7 +301,7 @@ class ABSModel(Model):
         available_grid_list_stores = []
 
         # Create map:
-        self.responsiveGraph = ResponsiveGraph()
+        self.responsiveGraph = ResponsiveGraph(t_run)
     
         """Customer creation and placement on the grid"""    
         for h in h_count:    
@@ -386,7 +411,10 @@ class ABSModel(Model):
         else:
             self.pandemic_count = 0
             print("Day", i, ": regular behavior")
-
+            
+        """Advances the simulation time of 1 step (day)"""
+        self.schedule.step()
+        
         for y in range(h_grid):
             for x in range(w_grid):
                 cellmates = self.grid.get_cell_list_contents((x,y))
@@ -399,16 +427,20 @@ class ABSModel(Model):
                             self.responsiveGraph.agents_in_cell[y][x] = -2
                         else:
                             self.responsiveGraph.agents_in_cell[y][x] = -1
-        self.responsiveGraph.update()
-            
-        """Advances the simulation time of 1 step (day)"""
-        self.schedule.step()
+        lr = 0
+        for a in self.schedule.agents:
+            if hasattr(a,"dc_inv"):
+                lr += a.lost_restock
+        ifr = 100
+        if self.orders_at_dc != 0:
+            ifr = (self.orders_at_dc-lr)/self.orders_at_dc*100
+        self.responsiveGraph.update(i, self.d, ifr)
 
 
        
 """Initializing model parameters"""
 n_runs = 1                              # number of runs
-t_run =  100                            # number of steps (days) in a run
+t_run =  50 #100                            # number of steps (days) in a run
 pandemic_start = 15                     # Start of pandemic 
 panic_end = pandemic_start+20           # Moment in which tha panic behavior of Customers terminates
 pandemic = False                        # It becomes True when pandemic is active
@@ -423,7 +455,7 @@ lost_dc_inv = np.zeros([t_run,n_runs,N_dc])
 """Running the simulation"""
 for r in range(n_runs):
     print("\n\nRun number:" + str(r))
-    model_1 = ABSModel()
+    model_1 = ABSModel(t_run)
     pandemic = False
     model_1.pandemic_count = 0
     
@@ -463,20 +495,5 @@ for i in range(t_run):
         ifr_dc[i] = 1
     else:
         ifr_dc[i] = (av_orders_at_dc[i]-av_lost_dc_inv[i])/av_orders_at_dc[i]
-        
-# 3. Plot the item fill rate
-plt.show()
-plt.plot(ifr_dc)
-plt.ylim(0.2,)
-plt.title('DC Item Fill Rate, run average')
-plt.xlabel("time (days)")
-plt.ylabel("Item Fill Rate (-)")
-
-# 4. Plot the demand over time 
-plt.show()
-plt.plot(av_demand)
-plt.title("demand over time")
-plt.xlabel("time (days)")
-plt.ylabel("units")
 
 print("Minimal Distribution Center IFR = ", round(np.min(ifr_dc)*100, 2), "%\n\n")
