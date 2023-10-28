@@ -49,8 +49,8 @@ class ResponsiveGraph():
 
         # Map chart
         self.ax1.set_title("Map")
-        self.agents_in_cell = np.zeros((h_grid, w_grid))
-        self.ax1.imshow(self.agents_in_cell, interpolation='nearest', cmap = 'Reds_r')
+        self.agents_in_cell = np.full((h_grid, w_grid, 3), 255)
+        self.ax1.imshow(self.agents_in_cell)
 
         # Demand chart
         self.ax2.set_title("Demand")
@@ -71,7 +71,7 @@ class ResponsiveGraph():
         plt.cla()
         
         # Map chart
-        self.ax1.imshow(self.agents_in_cell, interpolation='nearest', cmap = 'Reds_r')
+        self.ax1.imshow(self.agents_in_cell)
         
         # Demand chart
         self.demand[r] = d
@@ -102,11 +102,19 @@ class Customer(Agent):
         self.stores = []            # List of all stores. The list determines the sequence according to which the Customer visits the stores
         self.pbs = False            # Customer's panic buying sensitivity
         self.hungry = False         # If the customer doesn't manage to find a store with enough pasta, it gets hunger
+        self.x = 0
+        self.y = 0
+    
+    def set_pos(self, x, y):
+        self.x = x
+        self.y = y
     
     def store_visiting_list_generation(self): 
         """The sequence of stores the Customer can visit is retrieved"""
         s_list = np.array(self.model.schedule_sto.agents)      # the Store agents are retrieved from the schedule.agents list of the scheduler
-        self.stores = s_list
+        for sto in s_list:
+            sto.prov = (self.x - sto.x)**2 + (self.y - sto.y)**2
+        self.stores = sorted(s_list, key=lambda x: x.prov)
         self.purchasing_store=random.choice(self.stores) # the Customer chooses randomly a Store in the list of Store agents
         self.purchasing_store.store_expected_demand += self.q_base*self.f_base   # the Customer's expected daily demand is recorded for the Store agent chosen by the Customer. This information is used to set the different Stores' starting inventory. 
         
@@ -127,7 +135,7 @@ class Customer(Agent):
            if i != 0: # During the first step (day), it is assumed that the store chosen for the purchase has inventory 
                """The Customer looks for a store with inventory to make a purchase"""
                for n in [*range(customer_store_limit)]:
-                   store=random.choice(self.stores) # the Customer chooses randomly the Store he is going to visit in the step
+                   store = self.stores[n] # the Customer chooses randomly the Store he is going to visit in the step
                    shop_visited.append(store.unique_id)
                    while(store==self.purchasing_store): # but if he has already tried to make the purchase at that Store but he found no inventory, 
                        store=random.choice(self.stores) # he chooses another Store, 
@@ -173,7 +181,14 @@ class Store(Agent):
         self.store_expected_demand = 0  # Store's expected demand in the first step (day)
         self.store_inv = 0              # Store's current inventory 
         self.d_s = 7*[0]                # List of amount of products bought at the Store in the last 7 days (excluding days with zero demand)
-               
+        self.prov = 0       # Temporary variable to sort stores by distance to the customers  
+        self.x = 0
+        self.y = 0
+    
+    def set_pos(self, x, y):
+        self.x = x
+        self.y = y
+    
     def Store_request_restock(self):
         DC = self.model.schedule_dc.agents[0] # Retrieve the DC agent from the schedule.agents list of the scheduler
         """Calculate the amount to be ordered by the Store"""
@@ -335,6 +350,7 @@ class ABSModel(Model):
                     x_region = location_customer_region-y_region*wh_region
                     y = y_region+ wh_region*h 
                     x = wh_region*w+x_region
+                    a.set_pos(x, y)
                     self.grid.place_agent(a,(x,y))
                     available_region_list.remove(location_customer)
                     # Assign consumption behavior
@@ -368,6 +384,7 @@ class ABSModel(Model):
                     x_region = location_store_region-y_region*wh_region
                     y = y_region+wh_region*h 
                     x = wh_region*w+x_region
+                    b.set_pos(x, y)
                     self.grid.place_agent(b, (x,y))
                     store_positions.append(b.pos)
                     available_region_list.remove(location_store)
@@ -437,11 +454,17 @@ class ABSModel(Model):
                     cus = self.random.choice(cellmates)
                     if isinstance(cus, Customer):
                         if cus.hungry:
-                            self.responsiveGraph.agents_in_cell[y][x] = -3  # Households currently starving
+                            self.responsiveGraph.agents_in_cell[y][x] = [255, 0, 0]  # Households currently starving
                         elif cus.pbs:
-                            self.responsiveGraph.agents_in_cell[y][x] = -2  # Households currently panicking (but not hungry)
+                            self.responsiveGraph.agents_in_cell[y][x] = [255, 216, 0]  # Households currently panicking (but not hungry)
                         else:
-                            self.responsiveGraph.agents_in_cell[y][x] = -1  # Households not hungry nor panicked
+                            self.responsiveGraph.agents_in_cell[y][x] = [0, 255, 0]  # Households not hungry nor panicked
+                    if isinstance(cus, Store):
+                        if cus.store_inv >0 :
+                            self.responsiveGraph.agents_in_cell[y][x] = [128, 128, 128]  # Store still has stuff
+                        else:
+                            self.responsiveGraph.agents_in_cell[y][x] = [0, 0, 0]  # Store empty
+        
         lr = 0
         starving = 0
         for a in self.schedule_dc.agents:
