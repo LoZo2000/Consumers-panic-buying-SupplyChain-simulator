@@ -1,5 +1,5 @@
 from mesa import Agent, Model
-from mesa.time import BaseScheduler
+from mesa.time import RandomActivation
 from mesa.space import SingleGrid
 import numpy as np
 import random
@@ -105,7 +105,7 @@ class Customer(Agent):
     
     def store_visiting_list_generation(self): 
         """The sequence of stores the Customer can visit is retrieved"""
-        s_list = np.array(self.model.schedule.agents[N:N+N_s])      # the Store agents are retrieved from the schedule.agents list of the scheduler
+        s_list = np.array(self.model.schedule_sto.agents)      # the Store agents are retrieved from the schedule.agents list of the scheduler
         self.stores = s_list
         self.purchasing_store=random.choice(self.stores) # the Customer chooses randomly a Store in the list of Store agents
         self.purchasing_store.store_expected_demand += self.q_base*self.f_base   # the Customer's expected daily demand is recorded for the Store agent chosen by the Customer. This information is used to set the different Stores' starting inventory. 
@@ -175,7 +175,7 @@ class Store(Agent):
         self.d_s = 7*[0]                # List of amount of products bought at the Store in the last 7 days (excluding days with zero demand)
                
     def Store_request_restock(self):
-        DC = self.model.schedule.agents[N+N_s] # Retrieve the DC agent from the schedule.agents list of the scheduler
+        DC = self.model.schedule_dc.agents[0] # Retrieve the DC agent from the schedule.agents list of the scheduler
         """Calculate the amount to be ordered by the Store"""
         order_data = []
         for d in self.d_s:     # Determining the average daily demand,
@@ -241,7 +241,7 @@ class DistributionCenter(Agent):
         self.dc_current_processed_orders = np.delete(self.dc_current_processed_orders,np.where(self.dc_current_processed_orders[:,2]==-1),0) # The orders that have been processed are removed from the list. 
    
     def dc_request_restock(self):
-        Manufacturer = self.model.schedule.agents[-1]   # Retrieve the Manufacturer agent (i.e. the last one) from the schedule.agents list of the scheduler
+        Manufacturer = self.model.schedule_man.agents[0]   # Retrieve the Manufacturer agent (i.e. the last one) from the schedule.agents list of the scheduler
         Manufacturer.restock_request = self.order # The restock amount requested by the DC is added to the Manufacturer's restock_requests attribute. 
         
     def step(self):
@@ -275,7 +275,7 @@ class Manufacturer(Agent):
             if n[1] > 0:    # If the transport from the Manufacturer to the DC is not terminated yet,
                 n[1] -= 1   # update transport time.
             else:           # If the restock quantity has arrived to the DC,
-                dc = self.model.schedule.agents[N+N_s] # retrieve the DC agent from the schedule.agents list of the scheduler,
+                dc = self.model.schedule_dc.agents[0] # retrieve the DC agent from the schedule.agents list of the scheduler,
                 dc.dc_inv += int(n[0]) # update the DC inventory,
                 n[1] -= 1              # and set the DC-to-store transport time to -1 to signal that the order has been processed.
         self.m_current_processed_orders = np.delete(self.m_current_processed_orders,np.where(self.m_current_processed_orders[:,1]==-1),0) # The orders that have been processed are removed from the list 
@@ -290,7 +290,10 @@ class Manufacturer(Agent):
 """Model class definition"""        
 class ABSModel(Model):
     def __init__(self, t_run):
-        self.schedule = BaseScheduler(self)         # Activates all agents once per step, in order of addition to schedule
+        self.schedule_cus = RandomActivation(self)         # Activates all customers once per step randomly, in order of addition to schedule
+        self.schedule_sto = RandomActivation(self)         # Activates all stores once per step randomly, in order of addition to schedule
+        self.schedule_dc = RandomActivation(self)           # Activates all dc once per step randomly, in order of addition to schedule
+        self.schedule_man = RandomActivation(self)          # Activates all manufacturers once per step randomly, in order of addition to schedule
         self.d = 0                                  # Demand of current step (day)
         self.pandemic_count = 0                     # Counts the amount of steps (days) from the pandemic start
         self.grid = SingleGrid(w_grid,h_grid,True)  # Grid on which Customer agents and Store agents are positioned
@@ -322,7 +325,7 @@ class ABSModel(Model):
                     i_customer = random.choice(customer_list)
                     a = Customer(i_customer, self)  
                     # Add the customer agent to the scheduler
-                    self.schedule.add(a) 
+                    self.schedule_cus.add(a) 
                     customer_list_region=np.append(customer_list_region, [a])
                     customer_list.remove(i_customer)
                     # Place the Customer agent on a unoccupied grid location
@@ -356,7 +359,7 @@ class ABSModel(Model):
                     i_store = random.choice(store_list)
                     b = Store(i_store, self)
                     # Add the Store agent to the scheduler after customers
-                    self.schedule.add(b)
+                    self.schedule_sto.add(b)
                     store_list.remove(i_store)
                     # Place the Store agent on a unoccupied grid location
                     location_store = random.choice(available_region_list)
@@ -376,7 +379,7 @@ class ABSModel(Model):
             i_dc = random.choice(dc_list)
             c = DistributionCenter(i_dc, self)
             # Add the DC agent to the scheduler
-            self.schedule.add(c)
+            self.schedule_dc.add(c)
             dc_list.remove(i_dc)
             
         """Manufacurer creation"""
@@ -385,7 +388,7 @@ class ABSModel(Model):
             i_m = random.choice(m_list)
             d = Manufacturer(i_m, self)
             # Add the Manufacturer agent to the scheduler
-            self.schedule.add(d)
+            self.schedule_man.add(d)
             m_list.remove(i_m)
         print("All agents have been scheduled")
         
@@ -397,7 +400,7 @@ class ABSModel(Model):
         
         """For each region, define a certain amount of Customer agents that are in panic"""
         for w in (range(N_regions)):
-            self.customer_list_region=self.schedule.agents[w*int(N/N_regions):((w+1)*int(N/N_regions))]
+            self.customer_list_region=self.schedule_cus.agents[w*int(N/N_regions):((w+1)*int(N/N_regions))]
             while len(pbs_customer_list) < (N_pb*(w+1))/N_regions:
                 a = random.choice( self.customer_list_region)
                 pbs_customer_list = np.append(pbs_customer_list,[a])
@@ -422,7 +425,10 @@ class ABSModel(Model):
             print("Day", i, ": regular behavior")
             
         """Advances the simulation time of 1 step (day)"""
-        self.schedule.step()
+        self.schedule_cus.step()
+        self.schedule_sto.step()
+        self.schedule_dc.step()
+        self.schedule_man.step()
         
         for y in range(h_grid):
             for x in range(w_grid):
@@ -438,10 +444,10 @@ class ABSModel(Model):
                             self.responsiveGraph.agents_in_cell[y][x] = -1  # Households not hungry nor panicked
         lr = 0
         starving = 0
-        for a in self.schedule.agents:
-            if hasattr(a,"dc_inv"):
-                lr += a.lost_restock
-            elif hasattr(a, "hungry") and a.hungry:
+        for a in self.schedule_dc.agents:
+            lr += a.lost_restock
+        for a in self.schedule_cus.agents:
+            if a.hungry:
                 starving += 1
         ifr = 100
         if self.orders_at_dc != 0:
@@ -486,9 +492,8 @@ for r in range(n_runs):
         orders_at_dc[i][r] = model_1.orders_at_dc
         model_1.orders_at_dc = 0
         
-        for a in model_1.schedule.agents:
-            if hasattr(a,"dc_inv"):
-                lost_dc_inv[i][r][a.unique_id-N-N_s] = a.lost_restock
+        for a in model_1.schedule_dc.agents:
+            lost_dc_inv[i][r][a.unique_id-N-N_s] = a.lost_restock
 
 
 
