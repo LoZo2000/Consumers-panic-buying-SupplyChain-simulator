@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 """System parameters"""
 DC_starting_inventory = 10000
 m_starting_capacity = 10000           
-wh_region = 100                         # Width & Height of a region
+wh_region = 50#100                         # Width & Height of a region
 w_grid = wh_region*2 #5                 # Full width of the grid
 h_grid = wh_region*3 #4                 # Full height of the grid
 N_regions = int(w_grid/wh_region)*int(h_grid/wh_region) # Number of regions
@@ -23,9 +23,18 @@ dc_transport_time = 1                   # DC-to-store transport time [days]
 N_m = 1                                 # Number of Manufacturers 
 N_dc = 1                                # Number of distribution centers 
 N_s = 5*N_regions                       # Number of stores 
-N = 300*N_s                             # Number of customers          
+N = N_s*300 #300                        # Number of customers          
 customer_store_limit = N_s              # Limit of stores a customer will visit to satisfy the purchase 
 p_mult = 2                              # Multiplying factor for the increase in buying frequency and quantity of a customer in panic
+
+
+
+activated_first_customer = np.zeros(N)
+activated_first_shop = np.zeros(N_s)
+primo_customer = True
+primo_shop = True
+
+
 
 """Consumption behavior of customers (equal for each region)"""
 consumption_list_region = np.zeros([int(N/N_regions),2])
@@ -59,12 +68,13 @@ class ResponsiveGraph():
         # IFR chart
         self.ax3.set_title("Item Fill Rate")
         self.ifr_dc = np.zeros(t)
+        self.starvation = np.zeros(t)
         self.av_ifr_dc = np.zeros(t)
 
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
 
-    def update(self, r, d, ifr):
+    def update(self, r, d, ifr, star):
         plt.cla()
         
         # Map chart
@@ -78,7 +88,9 @@ class ResponsiveGraph():
         
         # IFR chart
         self.ifr_dc[r] = ifr
-        self.ax3.plot(self.t[:r], self.ifr_dc[:r], 'b', marker='o')
+        self.starvation[r] = star
+        self.ax3.plot(self.t[:r], self.ifr_dc[:r], 'b', marker='o') #IFR of DC
+        self.ax3.plot(self.t[:r], self.starvation[:r], 'r', marker='o') #Percentge of people who didn't manage to buy q food
         
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
@@ -118,10 +130,12 @@ class Customer(Agent):
             
     def purchase(self):
            """ The Store at which the Customer will purchase is identified"""
+           shop_visited = []
            if i != 0: # During the first step (day), it is assumed that the store chosen for the purchase has inventory 
                """The Customer looks for a store with inventory to make a purchase"""
                for n in [*range(customer_store_limit)]:
                    store=random.choice(self.stores) # the Customer chooses randomly the Store he is going to visit in the step
+                   shop_visited.append(store.unique_id)
                    while(store==self.purchasing_store): # but if he has already tried to make the purchase at that Store but he found no inventory, 
                        store=random.choice(self.stores) # he chooses another Store, 
                    self.purchasing_store=store          # If he has not already tried to purchase at the Store in the step (day), he tries to make the purchase at the chosen Store. 
@@ -132,6 +146,7 @@ class Customer(Agent):
            if  self.q > self.purchasing_store.store_inv and i != 0:           # If the selected store does not have the entire quantity requested by the Customer,
                p_amount = self.purchasing_store.store_inv                    # the Customer will purchase an amount equal to the reamining inventory at the store. In case the store is in stock out, such amount will be 0 (as the store will have no inventory left)
                self.hungry = True
+               #print("Customer", self.unique_id, "is hungry after she visited the shops", shop_visited)
            else:                                             # If the selected store has enough inventory to fulfill the entire quantity requested by the Customer,
                p_amount = self.q                             # the Customer will purchase an amount that is equal to his purchasing quantity
                self.hungry = False
@@ -141,6 +156,11 @@ class Customer(Agent):
            self.model.d += self.q      # the quantity requested by the Customer is added to the overall demand in the step (day)
    
     def step(self):
+        global primo_customer
+        if primo_customer:
+            print("primo trovato")
+            activated_first_customer[self.unique_id] += 1
+            primo_customer = False
         """The list of stores the Customer can visit is retrieved and the initial expected demand is recorded (for the Stores to set their starting inventory)"""
         if i==0:
             self.store_visiting_list_generation()   
@@ -178,6 +198,11 @@ class Store(Agent):
         DC.dc_orders_waitlist = np.concatenate((DC.dc_orders_waitlist,[[self, order_amount]]),axis=0) # The order placed by the Store is added to the list of orders waiting to be processed by the DC. In such list, each order contains the Store agent that placed the order and the requested amount
     
     def step(self):
+        global primo_shop
+        if primo_shop:
+            print("Primotrovato")
+            activated_first_shop[self.unique_id-N] += 1
+            primo_shop = False
         
         """In the first step (day), the starting inventory of the Store is determined"""
         if i == 0:
@@ -189,7 +214,7 @@ class Store(Agent):
         """Update the array containing the demand of the past steps (days)""" 
         if self.d_s[-1] != 0:           # If the demand of the step (day), which is equal to the overall quantity purchased at the Store in the step (day), is not 0,
             self.d_s.append(0)          # An additional element of value 0 is added to the array as this element will be updated in the following step (day)
-            self.d_s = self.d_s[1:]     # the updated d_s array drops its oldest element 
+            self.d_s = self.d_s[1:]     # the updated d_s array drops its oldest element
             
 class DistributionCenter(Agent):
     def __init__(self, unique_id, model):
@@ -338,6 +363,7 @@ class ABSModel(Model):
                 available_grid_list = available_grid_list[wh_region*wh_region:]
                 available_grid_list_stores = np.append(available_grid_list_stores, available_region_list)
                 available_grid_list_stores=[int(i) for i in available_grid_list_stores]
+                #print("Customers in region", h, ",", w, "=", len(customer_list_region))
             
         """Stores creation and placement on the grid""" 
         for h in h_count:
@@ -390,13 +416,14 @@ class ABSModel(Model):
         """For each region, define a certain amount of Customer agents that are in panic"""
         for w in (range(N_regions)):
             self.customer_list_region=self.schedule.agents[w*int(N/N_regions):((w+1)*int(N/N_regions))]
-            while len(pbs_customer_list) < (N_pb*(w+1))/N_regions: 
+            while len(pbs_customer_list) < (N_pb*(w+1))/N_regions:
                 a = random.choice( self.customer_list_region)
                 pbs_customer_list = np.append(pbs_customer_list,[a])
                 if len(self.initial_panic_customers) < (N_pb*(w+1))/N_regions: 
-                    self.initial_panic_customers = np.append(self.initial_panic_customers,[a]) 
+                    self.initial_panic_customers = np.append(self.initial_panic_customers,[a])
                 self.customer_list_region.remove(a)
         
+    
     def step(self):
         """If the pandemic has started"""
         if pandemic == True:
@@ -413,6 +440,10 @@ class ABSModel(Model):
             print("Day", i, ": regular behavior")
             
         """Advances the simulation time of 1 step (day)"""
+        global primo_customer
+        global primo_shop
+        primo_customer = True
+        primo_shop = True
         self.schedule.step()
         
         for y in range(h_grid):
@@ -422,19 +453,22 @@ class ABSModel(Model):
                     cus = self.random.choice(cellmates)
                     if isinstance(cus, Customer):
                         if cus.hungry:
-                            self.responsiveGraph.agents_in_cell[y][x] = -3
+                            self.responsiveGraph.agents_in_cell[y][x] = -3  # Households currently starving
                         elif cus.pbs:
-                            self.responsiveGraph.agents_in_cell[y][x] = -2
+                            self.responsiveGraph.agents_in_cell[y][x] = -2  # Households currently panicking (but not hungry)
                         else:
-                            self.responsiveGraph.agents_in_cell[y][x] = -1
+                            self.responsiveGraph.agents_in_cell[y][x] = -1  # Households not hungry nor panicked
         lr = 0
+        starving = 0
         for a in self.schedule.agents:
             if hasattr(a,"dc_inv"):
                 lr += a.lost_restock
+            elif hasattr(a, "hungry") and a.hungry:
+                starving += 1
         ifr = 100
         if self.orders_at_dc != 0:
             ifr = (self.orders_at_dc-lr)/self.orders_at_dc*100
-        self.responsiveGraph.update(i, self.d, ifr)
+        self.responsiveGraph.update(i, self.d, ifr, (N-starving)/N*100)
 
 
        
@@ -497,3 +531,6 @@ for i in range(t_run):
         ifr_dc[i] = (av_orders_at_dc[i]-av_lost_dc_inv[i])/av_orders_at_dc[i]
 
 print("Minimal Distribution Center IFR = ", round(np.min(ifr_dc)*100, 2), "%\n\n")
+
+print(activated_first_customer)
+print(activated_first_shop)
