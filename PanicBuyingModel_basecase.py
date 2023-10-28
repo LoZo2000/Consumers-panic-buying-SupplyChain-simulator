@@ -12,8 +12,8 @@ import matplotlib.pyplot as plt
 DC_starting_inventory = 10000
 m_starting_capacity = 10000           
 wh_region = 100                         # Width & Height of a region
-w_grid = wh_region*5                    # Full width of the grid
-h_grid = wh_region*4                    # Full height of the grid
+w_grid = wh_region*3 #5                 # Full width of the grid
+h_grid = wh_region*2 #4                 # Full height of the grid
 N_regions = int(w_grid/wh_region)*int(h_grid/wh_region) # Number of regions
 f_restock = 1/3                         # Restock frequency [/day]
 m_transport_time = 2                    # Manufacturer-to-DC transport time [days]
@@ -42,19 +42,19 @@ plt.ion()
 class ResponsiveGraph():
     def __init__(self):
         self.fig = plt.figure()
-        self.agents_in_cell = np.zeros((w_grid, h_grid))
-        self.fig.set_figwidth(8) 
-        self.fig.set_figheight(8)
+        self.agents_in_cell = np.zeros((h_grid, w_grid))
+        self.fig.set_figwidth(15) 
+        self.fig.set_figheight(9)
         plt.axis('on')
         plt.title("Map")
-        plt.imshow(self.agents_in_cell, interpolation='nearest')
+        plt.imshow(self.agents_in_cell, interpolation='nearest', cmap = 'Reds_r')
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
                 
     def update(self):
         plt.axis('on')
         plt.title("Map")
-        plt.imshow(self.agents_in_cell, interpolation='nearest')
+        plt.imshow(self.agents_in_cell, interpolation='nearest', cmap = 'Reds_r')
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
 
@@ -71,6 +71,7 @@ class Customer(Agent):
         self.f = self.f_base        # Customer's current purchasing frequency
         self.stores = []            # List of all stores. The list determines the sequence according to which the Customer visits the stores
         self.pbs = False            # Customer's panic buying sensitivity
+        self.hungry = False         # If the customer doesn't manage to find a store with enough pasta, it gets hunger
     
     def store_visiting_list_generation(self): 
         """The sequence of stores the Customer can visit is retrieved"""
@@ -98,16 +99,18 @@ class Customer(Agent):
                    store=random.choice(self.stores) # the Customer chooses randomly the Store he is going to visit in the step
                    while(store==self.purchasing_store): # but if he has already tried to make the purchase at that Store but he found no inventory, 
                        store=random.choice(self.stores) # he chooses another Store, 
-                   self.purchasing_store=store          # If he has not already tried to purchase at the Store in the step (day), he tries to amke the purchase at the chosen Store. 
+                   self.purchasing_store=store          # If he has not already tried to purchase at the Store in the step (day), he tries to make the purchase at the chosen Store. 
                    if self.purchasing_store.store_inv > 0: # The Customer checks whether there is inventory left at the chosen store 
                       break
                           
            """The Customer makes the purchase at the store he has just selected"""
            if  self.q > self.purchasing_store.store_inv and i != 0:           # If the selected store does not have the entire quantity requested by the Customer,
                p_amount = self.purchasing_store.store_inv                    # the Customer will purchase an amount equal to the reamining inventory at the store. In case the store is in stock out, such amount will be 0 (as the store will have no inventory left)
+               self.hungry = True
            else:                                             # If the selected store has enough inventory to fulfill the entire quantity requested by the Customer,
                p_amount = self.q                             # the Customer will purchase an amount that is equal to his purchasing quantity
-           """Following the purchase, inventory and demand attributes are updated"""
+               self.hungry = False
+               '''Following the purchase, inventory and demand attributes are updated'''
            self.purchasing_store.store_inv -= p_amount # Once the Customer has made the purchase, the inventory at the store is decreased of the purchased amount.
            self.purchasing_store.d_s[-1] += p_amount   # the purchased amount by the Customer is added to the amount of products bought at the store in the step (day).
            self.model.d += self.q      # the quantity requested by the Customer is added to the overall demand in the step (day)
@@ -384,16 +387,18 @@ class ABSModel(Model):
             self.pandemic_count = 0
             print("Day", i, ": regular behavior")
 
-        for x in range(w_grid):
-            for y in range(h_grid):
+        for y in range(h_grid):
+            for x in range(w_grid):
                 cellmates = self.grid.get_cell_list_contents((x,y))
                 if len(cellmates) > 0:
                     cus = self.random.choice(cellmates)
                     if isinstance(cus, Customer):
-                        if cus.pbs:
-                            self.responsiveGraph.agents_in_cell[x][y] = 2
+                        if cus.hungry:
+                            self.responsiveGraph.agents_in_cell[y][x] = -3
+                        elif cus.pbs:
+                            self.responsiveGraph.agents_in_cell[y][x] = -2
                         else:
-                            self.responsiveGraph.agents_in_cell[x][y] = 1
+                            self.responsiveGraph.agents_in_cell[y][x] = -1
         self.responsiveGraph.update()
             
         """Advances the simulation time of 1 step (day)"""
@@ -459,7 +464,7 @@ for i in range(t_run):
     else:
         ifr_dc[i] = (av_orders_at_dc[i]-av_lost_dc_inv[i])/av_orders_at_dc[i]
         
-# 3. Plot the item fill rate 
+# 3. Plot the item fill rate
 plt.show()
 plt.plot(ifr_dc)
 plt.ylim(0.2,)
