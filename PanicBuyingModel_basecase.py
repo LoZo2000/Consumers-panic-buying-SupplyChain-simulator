@@ -29,13 +29,6 @@ p_mult = 2                              # Multiplying factor for the increase in
 
 
 
-activated_first_customer = np.zeros(N)
-activated_first_shop = np.zeros(N_s)
-primo_customer = True
-primo_shop = True
-
-
-
 """Consumption behavior of customers (equal for each region)"""
 consumption_list_region = np.zeros([int(N/N_regions),2])
 consumption_list_region[range(int(0.27*N/N_regions))] = [0.333, int(1)]
@@ -156,11 +149,6 @@ class Customer(Agent):
            self.model.d += self.q      # the quantity requested by the Customer is added to the overall demand in the step (day)
    
     def step(self):
-        global primo_customer
-        if primo_customer:
-            print("primo trovato")
-            activated_first_customer[self.unique_id] += 1
-            primo_customer = False
         """The list of stores the Customer can visit is retrieved and the initial expected demand is recorded (for the Stores to set their starting inventory)"""
         if i==0:
             self.store_visiting_list_generation()   
@@ -198,12 +186,6 @@ class Store(Agent):
         DC.dc_orders_waitlist = np.concatenate((DC.dc_orders_waitlist,[[self, order_amount]]),axis=0) # The order placed by the Store is added to the list of orders waiting to be processed by the DC. In such list, each order contains the Store agent that placed the order and the requested amount
     
     def step(self):
-        global primo_shop
-        if primo_shop:
-            print("Primotrovato")
-            activated_first_shop[self.unique_id-N] += 1
-            primo_shop = False
-        
         """In the first step (day), the starting inventory of the Store is determined"""
         if i == 0:
             self.d_s[0:6] = 6*[m.ceil(self.store_expected_demand)] # The expected demand of the Store in the first step (day) is used as an average demand value to initiate the d_s array. The first 6 elements of the d_s array are popuplated with such value to make sure the restock amount can be computed when the actual values of past days' demand are not available yet
@@ -440,10 +422,6 @@ class ABSModel(Model):
             print("Day", i, ": regular behavior")
             
         """Advances the simulation time of 1 step (day)"""
-        global primo_customer
-        global primo_shop
-        primo_customer = True
-        primo_shop = True
         self.schedule.step()
         
         for y in range(h_grid):
@@ -531,6 +509,3 @@ for i in range(t_run):
         ifr_dc[i] = (av_orders_at_dc[i]-av_lost_dc_inv[i])/av_orders_at_dc[i]
 
 print("Minimal Distribution Center IFR = ", round(np.min(ifr_dc)*100, 2), "%\n\n")
-
-print(activated_first_customer)
-print(activated_first_shop)
