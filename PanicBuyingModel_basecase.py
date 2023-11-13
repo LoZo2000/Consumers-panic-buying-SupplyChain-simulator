@@ -48,9 +48,28 @@ class ResponsiveGraph():
         self.fig.set_figheight(9)
 
         # Map chart
-        self.ax1.set_title("Map")
-        self.agents_in_cell = np.full((h_grid, w_grid, 3), 255)
-        self.ax1.imshow(self.agents_in_cell)
+        self.ax1.set_title("Map")   # All these lists are needed to print the scatterplot representing the map
+        self.scatSto = None
+        self.storesX = []
+        self.storesY = []
+        self.scatStoEmp = None
+        self.stores_emptyX = []
+        self.stores_emptyY = []
+        self.scatCus = None
+        self.customersX = []
+        self.customersY = []
+        self.scatCusPan = None
+        self.customers_panicX = []
+        self.customers_panicY = []
+        self.scatCusHun = None
+        self.customers_hungryX = []
+        self.customers_hungryY = []
+        
+        self.scatCus = self.ax1.scatter(self.customersX, self.customersY, color='green', alpha=0.1, s=3)
+        self.scatCusPan = self.ax1.scatter(self.customers_panicX, self.customers_panicY, color='yellow', alpha=1, s=3)
+        self.scatCusHun = self.ax1.scatter(self.customers_hungryX, self.customers_hungryY, color='red', alpha=1, s=3)
+        self.scatSto = self.ax1.scatter(self.storesX, self.storesY, color='black', s=50, marker='*')
+        self.scatStoEmp = self.ax1.scatter(self.stores_emptyX, self.stores_emptyY, color='red', s=50, marker='*')
 
         # Demand chart
         self.ax2.set_title("Demand")
@@ -68,22 +87,38 @@ class ResponsiveGraph():
         self.fig.canvas.flush_events()
 
     def update(self, r, d, ifr, star):
+        #plt.clf()
         plt.cla()
+        self.scatCus.remove()       # Reset the previous figures and print the new map
+        self.scatCusPan.remove()
+        self.scatCusHun.remove()
+        self.scatSto.remove()
+        self.scatStoEmp.remove()
         
         # Map chart
-        self.ax1.imshow(self.agents_in_cell)
+        self.scatCus = self.ax1.scatter(self.customersX, self.customersY, color='green', alpha=0.1, s=3, label='Happy customer')
+        self.scatCusPan = self.ax1.scatter(self.customers_panicX, self.customers_panicY, color='yellow', alpha=1, s=3, label='Panicked customer')
+        self.scatCusHun = self.ax1.scatter(self.customers_hungryX, self.customers_hungryY, color='red', alpha=1, s=3, label='Hungry customer')
+        self.scatSto = self.ax1.scatter(self.storesX, self.storesY, color='black', s=50, marker='*', label='Store')
+        self.scatStoEmp = self.ax1.scatter(self.stores_emptyX, self.stores_emptyY, color='red', s=50, marker='*', label='Empty store')
+        self.ax1.legend()
         
         # Demand chart
         self.demand[r] = d
         self.av_demand[r] = demand[:r].mean()
-        self.ax2.plot(self.t[:r], self.demand[:r], 'k', marker='o')
-        self.ax2.plot(self.t[:r], self.av_demand[:r], 'k--')
+        self.ax2.plot(self.t[:r], self.demand[:r], 'k', marker='o', label='demand' if i == 0 else "")
+        self.ax2.plot(self.t[:r], self.av_demand[:r], 'k--', label='average demand' if i == 0 else "")
+        self.ax2.set_xlabel("time (days)")
+        self.ax2.set_ylabel("demand (units)")
+        self.ax2.legend()
         
         # IFR chart
         self.ifr_dc[r] = ifr
         self.starvation[r] = star
-        self.ax3.plot(self.t[:r], self.ifr_dc[:r], 'b', marker='o') #IFR of DC
-        self.ax3.plot(self.t[:r], self.starvation[:r], 'r', marker='o') #Percentge of people who didn't manage to buy q food
+        self.ax3.plot(self.t[:r], self.ifr_dc[:r], 'b', marker='o', label='IFR of the DC') #IFR of DC
+        self.ax3.plot(self.t[:r], self.starvation[:r], 'r', marker='o', label='% of satisfied customers') #Percentage of people who managed to buy q food
+        self.ax3.set_xlabel("time (days)")
+        self.ax3.legend()
         
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
@@ -447,6 +482,17 @@ class ABSModel(Model):
         self.schedule_dc.step()
         self.schedule_man.step()
         
+        # Update lists, then print the map
+        self.responsiveGraph.storesX = []
+        self.responsiveGraph.storesY = []
+        self.responsiveGraph.stores_emptyX = []
+        self.responsiveGraph.stores_emptyY = []
+        self.responsiveGraph.customersX = []
+        self.responsiveGraph.customersY = []
+        self.responsiveGraph.customers_panicX = []
+        self.responsiveGraph.customers_panicY = []
+        self.responsiveGraph.customers_hungryX = []
+        self.responsiveGraph.customers_hungryY = []
         for y in range(h_grid):
             for x in range(w_grid):
                 cellmates = self.grid.get_cell_list_contents((x,y))
@@ -454,16 +500,21 @@ class ABSModel(Model):
                     cus = self.random.choice(cellmates)
                     if isinstance(cus, Customer):
                         if cus.hungry:
-                            self.responsiveGraph.agents_in_cell[y][x] = [255, 0, 0]  # Households currently starving
+                            self.responsiveGraph.customers_hungryY.append(y) # Households currently starving
+                            self.responsiveGraph.customers_hungryX.append(x)
                         elif cus.pbs:
-                            self.responsiveGraph.agents_in_cell[y][x] = [255, 216, 0]  # Households currently panicking (but not hungry)
+                            self.responsiveGraph.customers_panicY.append(y)  # Households currently panicking (but not hungry)
+                            self.responsiveGraph.customers_panicX.append(x)
                         else:
-                            self.responsiveGraph.agents_in_cell[y][x] = [0, 255, 0]  # Households not hungry nor panicked
+                            self.responsiveGraph.customersY.append(y)  # Households not hungry nor panicked
+                            self.responsiveGraph.customersX.append(x)
                     if isinstance(cus, Store):
-                        if cus.store_inv >0 :
-                            self.responsiveGraph.agents_in_cell[y][x] = [128, 128, 128]  # Store still has stuff
+                        if cus.store_inv > 0 :
+                            self.responsiveGraph.storesY.append(y)  # Store still has stuff
+                            self.responsiveGraph.storesX.append(x)
                         else:
-                            self.responsiveGraph.agents_in_cell[y][x] = [0, 0, 0]  # Store empty
+                            self.responsiveGraph.stores_emptyY.append(y)  # Store empty
+                            self.responsiveGraph.stores_emptyX.append(x)
         
         lr = 0
         starving = 0
