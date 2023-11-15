@@ -11,9 +11,9 @@ import matplotlib.pyplot as plt
 """System parameters"""
 DC_starting_inventory = 10000
 m_starting_capacity = 10000           
-wh_region = 50#100                         # Width & Height of a region
-w_grid = wh_region*2 #5                 # Full width of the grid
-h_grid = wh_region*3 #4                 # Full height of the grid
+wh_region = 100                         # Width & Height of a region
+w_grid = wh_region*5                 # Full width of the grid
+h_grid = wh_region*4                 # Full height of the grid
 N_regions = int(w_grid/wh_region)*int(h_grid/wh_region) # Number of regions
 f_restock = 1/3                         # Restock frequency [/day]
 m_transport_time = 2                    # Manufacturer-to-DC transport time [days]
@@ -219,6 +219,7 @@ class Store(Agent):
         self.prov = 0       # Temporary variable to sort stores by distance to the customers  
         self.x = 0
         self.y = 0
+        self.order_amount = 0
     
     def set_pos(self, x, y):
         self.x = x
@@ -231,9 +232,9 @@ class Store(Agent):
         for d in self.d_s:     # Determining the average daily demand,
             if d > 0:          # exclude days in which the demand is equal to 0
                 order_data.append(d)
-        order_amount = round(np.mean(order_data)*round(1/f_restock)) # The order amount is equal to the average daily demand multiplied by the restock period [days]
+        self.order_amount = round(np.mean(order_data)*round(1/f_restock)) # The order amount is equal to the average daily demand multiplied by the restock period [days]
         """The Store sends a restock request to the DC"""
-        DC.dc_orders_waitlist = np.concatenate((DC.dc_orders_waitlist,[[self, order_amount]]),axis=0) # The order placed by the Store is added to the list of orders waiting to be processed by the DC. In such list, each order contains the Store agent that placed the order and the requested amount
+        DC.dc_orders_waitlist = np.concatenate((DC.dc_orders_waitlist,[[self, self.order_amount]]),axis=0) # The order placed by the Store is added to the list of orders waiting to be processed by the DC. In such list, each order contains the Store agent that placed the order and the requested amount
     
     def step(self):
         """In the first step (day), the starting inventory of the Store is determined"""
@@ -243,6 +244,8 @@ class Store(Agent):
         """Request restock"""
         if ((i+1)*f_restock).is_integer(): # Every restock period, 
             self.Store_request_restock()      # request restock
+        else:
+            self.order_amount = 0
         """Update the array containing the demand of the past steps (days)""" 
         if self.d_s[-1] != 0:           # If the demand of the step (day), which is equal to the overall quantity purchased at the Store in the step (day), is not 0,
             self.d_s.append(0)          # An additional element of value 0 is added to the array as this element will be updated in the following step (day)
@@ -399,7 +402,6 @@ class ABSModel(Model):
                 available_grid_list = available_grid_list[wh_region*wh_region:]
                 available_grid_list_stores = np.append(available_grid_list_stores, available_region_list)
                 available_grid_list_stores=[int(i) for i in available_grid_list_stores]
-                #print("Customers in region", h, ",", w, "=", len(customer_list_region))
             
         """Stores creation and placement on the grid""" 
         for h in h_count:
@@ -493,6 +495,8 @@ class ABSModel(Model):
         self.responsiveGraph.customers_panicY = []
         self.responsiveGraph.customers_hungryX = []
         self.responsiveGraph.customers_hungryY = []
+        store_not_served = 0
+        store_req = 0
         for y in range(h_grid):
             for x in range(w_grid):
                 cellmates = self.grid.get_cell_list_contents((x,y))
@@ -515,6 +519,10 @@ class ABSModel(Model):
                         else:
                             self.responsiveGraph.stores_emptyY.append(y)  # Store empty
                             self.responsiveGraph.stores_emptyX.append(x)
+                            store_not_served += 1
+                            store_req += cus.order_amount
+        print("# of stores not served this turn:", store_not_served)  
+        print("Demand from stores to DC not satisfied:", store_req)
         
         lr = 0
         starving = 0
@@ -532,7 +540,7 @@ class ABSModel(Model):
        
 """Initializing model parameters"""
 n_runs = 1                              # number of runs
-t_run =  50 #100                            # number of steps (days) in a run
+t_run =  100                            # number of steps (days) in a run
 pandemic_start = 15                     # Start of pandemic 
 panic_end = pandemic_start+20           # Moment in which tha panic behavior of Customers terminates
 pandemic = False                        # It becomes True when pandemic is active
