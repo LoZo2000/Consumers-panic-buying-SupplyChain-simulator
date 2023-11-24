@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 """System parameters"""
 DC_starting_inventory = 10000
-m_starting_capacity = 10000           
+m_starting_capacity = 100000000          
 wh_region = 100                         # Width & Height of a region
 w_grid = wh_region*5                 # Full width of the grid
 h_grid = wh_region*4                 # Full height of the grid
@@ -170,10 +170,10 @@ class Customer(Agent):
            if i != 0: # During the first step (day), it is assumed that the store chosen for the purchase has inventory 
                """The Customer looks for a store with inventory to make a purchase"""
                for n in [*range(customer_store_limit)]:
-                   store = self.stores[n] # the Customer chooses randomly the Store he is going to visit in the step
+                   store = self.stores[n] # the Customer chooses the closest Store he is going to visit in the step
                    shop_visited.append(store.unique_id)
-                   while(store==self.purchasing_store): # but if he has already tried to make the purchase at that Store but he found no inventory, 
-                       store=random.choice(self.stores) # he chooses another Store, 
+                   #while(store==self.purchasing_store): # but if he has already tried to make the purchase at that Store but he found no inventory, 
+                   #    store=random.choice(self.stores) # he chooses another Store, 
                    self.purchasing_store=store          # If he has not already tried to purchase at the Store in the step (day), he tries to make the purchase at the chosen Store. 
                    if self.purchasing_store.store_inv > 0: # The Customer checks whether there is inventory left at the chosen store 
                       break
@@ -233,6 +233,8 @@ class Store(Agent):
             if d > 0:          # exclude days in which the demand is equal to 0
                 order_data.append(d)
         self.order_amount = round(np.mean(order_data)*round(1/f_restock)) # The order amount is equal to the average daily demand multiplied by the restock period [days]
+        if self.store_inv == 0 :
+            self.order_amount *= 1.000
         """The Store sends a restock request to the DC"""
         DC.dc_orders_waitlist = np.concatenate((DC.dc_orders_waitlist,[[self, self.order_amount]]),axis=0) # The order placed by the Store is added to the list of orders waiting to be processed by the DC. In such list, each order contains the Store agent that placed the order and the requested amount
     
@@ -295,6 +297,8 @@ class DistributionCenter(Agent):
    
     def dc_request_restock(self):
         Manufacturer = self.model.schedule_man.agents[0]   # Retrieve the Manufacturer agent (i.e. the last one) from the schedule.agents list of the scheduler
+        if self.dc_inv == 0 :
+            self.order *= 1.000
         Manufacturer.restock_request = self.order # The restock amount requested by the DC is added to the Manufacturer's restock_requests attribute. 
         
     def step(self):
@@ -540,8 +544,8 @@ class ABSModel(Model):
        
 """Initializing model parameters"""
 n_runs = 1                              # number of runs
-t_run =  100                            # number of steps (days) in a run
-pandemic_start = 15                     # Start of pandemic 
+t_run =  200 # 100                           # number of steps (days) in a run
+pandemic_start = 100 #15                     # Start of pandemic 
 panic_end = pandemic_start+20           # Moment in which tha panic behavior of Customers terminates
 pandemic = False                        # It becomes True when pandemic is active
 
