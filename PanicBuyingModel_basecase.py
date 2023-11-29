@@ -24,7 +24,7 @@ N_m = 1                                 # Number of Manufacturers
 N_dc = 1                                # Number of distribution centers 
 N_s = 5*N_regions                       # Number of stores 
 N = N_s*300 #300                        # Number of customers          
-customer_store_limit = N_s              # Limit of stores a customer will visit to satisfy the purchase 
+customer_store_limit = 5 # N_s              # Limit of stores a customer will visit to satisfy the purchase 
 p_mult = 2                              # Multiplying factor for the increase in buying frequency and quantity of a customer in panic
 
 
@@ -234,7 +234,7 @@ class Store(Agent):
                 order_data.append(d)
         self.order_amount = round(np.mean(order_data)*round(1/f_restock)) # The order amount is equal to the average daily demand multiplied by the restock period [days]
         if self.store_inv == 0 :
-            self.order_amount *= 1.000
+            self.order_amount *= 1.025
         """The Store sends a restock request to the DC"""
         DC.dc_orders_waitlist = np.concatenate((DC.dc_orders_waitlist,[[self, self.order_amount]]),axis=0) # The order placed by the Store is added to the list of orders waiting to be processed by the DC. In such list, each order contains the Store agent that placed the order and the requested amount
     
@@ -297,8 +297,8 @@ class DistributionCenter(Agent):
    
     def dc_request_restock(self):
         Manufacturer = self.model.schedule_man.agents[0]   # Retrieve the Manufacturer agent (i.e. the last one) from the schedule.agents list of the scheduler
-        if self.dc_inv == 0 :
-            self.order *= 1.000
+        if self.dc_inv == 0 and i :
+            self.order *= 1.025
         Manufacturer.restock_request = self.order # The restock amount requested by the DC is added to the Manufacturer's restock_requests attribute. 
         
     def step(self):
