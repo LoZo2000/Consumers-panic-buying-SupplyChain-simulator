@@ -1,3 +1,4 @@
 # Consumers-panic-buying-SupplyChain-simulator
-ML model to predict the outcome of flood events based on their initial conditions in Houston, TX. Final assignment of the course "Machine Learning 2023-2024" at Politecnico di Milano.
-'main' file contains both the data analysis and the building steps of the model, while 'description' file describes the problem in details and the format of the training set.
+Agent-Based simulation of the Supply Chain of an Italian pasta producer and distribution company during the CoVid-19 pandemic. This project is part of the final assignment of the course "Advanced Modelling Simulation 2023-2024" at Politecnico di Milano.  
+Aim of this project is to optimize the distribution network and to assess its robustness against disruptive events (such as, in this case, the pandemic and the following panic buying).  
+A better description of the problem is provided by
