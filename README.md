@@ -1,8 +1,3 @@
-# Some useful info
-## How this repository is organized:
-The main model in written in the file Main.py. The file "globals" contains all the global variables shared among all the Classes.
-Each Class (Agent) is written in its own file: in this way the code results clearer and tidier.
-## A brief tutorial about how to use GitHub:
-1) Download the GitHub app for Desktop (https://desktop.github.com/)
-2) Before starting to code, always press "Fetch origin", then "Pull" to make sure you are going to work on the latest version of the code
-3) To upload your new code, press "Push origin". You will be asked to give a name to your update. Please, give it a clear name that makes sense.
+# Consumers-panic-buying-SupplyChain-simulator
+ML model to predict the outcome of flood events based on their initial conditions in Houston, TX. Final assignment of the course "Machine Learning 2023-2024" at Politecnico di Milano.
+'main' file contains both the data analysis and the building steps of the model, while 'description' file describes the problem in details and the format of the training set.
